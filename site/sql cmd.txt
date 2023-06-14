@@ -1,0 +1,7 @@
+CREATE DATABASE bil20;
+USE bil20;
+
+CREATE TABLE Images (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    image BLOB
+);
