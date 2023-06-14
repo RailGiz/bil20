@@ -1,49 +1,59 @@
 using System;
+using System.Data;
 using System.Drawing;
-using System.Security.Cryptography.X509Certificates;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Windows.Forms;
-
+using MySql.Data.MySqlClient;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 namespace bil20
 {
     public partial class Form1 : Form
     {
-        private readonly EquationSolver equationSolver;
-        private readonly FunctionPlotter functionPlotter;
-        private PictureBox plotPictureBox;
+        private EquationSolver equationSolver;
+        private FunctionPlotter functionPlotter;
+        private GraphExporter graphExporter;
+        private DatabaseManager databaseManager;
 
         public Form1()
         {
             InitializeComponent();
 
+            // Инициализация объектов и подключение к базе данных
             equationSolver = new EquationSolver();
-            plotPictureBox = pictureBox1;
-            functionPlotter = new FunctionPlotter(plotPictureBox);
+            functionPlotter = new FunctionPlotter(pictureBox1);
+            graphExporter = new GraphExporter(pictureBox1);
+
+            databaseManager = new DatabaseManager("Server=localhost;Database=bil20;Uid=root;Pwd=;");
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
             try
             {
-                // Получаем значения параметров a, b, c, d, eq из текстовых полей
+                // Получение значений параметров a, b, c, d, eq из текстовых полей
                 double a = double.Parse(textBox1.Text);
                 double b = double.Parse(textBox2.Text);
                 double c = double.Parse(textBox3.Text);
                 double d = double.Parse(textBox4.Text);
                 double eq = double.Parse(textBox5.Text);
 
-                
-                // Определяем функцию для решения уравнения
+                // Определение функции для решения уравнения
                 Func<double, double> function = x =>
-                   a* Math.Pow(x,2) + b * x +  c*Math.Pow(eq, d * x) - eq;
+                   a * Math.Pow(x, 2) + b * x + c * Math.Pow(eq, d * x) - eq;
 
-                // Решаем уравнение методом Ньютона
+                // Решение уравнения методом Ньютона
                 double solution = equationSolver.NewtonMethod(function);
 
-                // Выводим результат
+                // Вывод результата
                 label1.Text = $"Решение: x = {solution}";
 
-                // Строим график функции
+                // Построение графика функции
                 functionPlotter.PlotFunction(function);
+
+                // Сохранение графика в базе данных
+                byte[] graphImageData = graphExporter.ExportToByteArray();
+                databaseManager.SaveImageToDatabase(graphImageData);
             }
             catch (FormatException)
             {
@@ -95,7 +105,6 @@ namespace bil20
 
             return (f2 - f1) / (x2 - x1);
         }
-
     }
 
     public class FunctionPlotter
@@ -130,11 +139,11 @@ namespace bil20
             // Очистка графика
             graphics.Clear(Color.White);
 
-            // Рисуем оси координат
+            // Рисование осей координат
             graphics.DrawLine(Pens.Black, xToPixel(xMin), yToPixel(0), xToPixel(xMax), yToPixel(0));
             graphics.DrawLine(Pens.Black, xToPixel(0), yToPixel(yMin), xToPixel(0), yToPixel(yMax));
 
-            // Рисуем график функции
+            // Рисование графика функции
             double step = 0.01; // Шаг между точками
             double prevX = xMin;
             double prevY = function(prevX);
@@ -158,9 +167,50 @@ namespace bil20
                 prevY = y;
             }
 
-
-            // Отображаем график в PictureBox
+            // Отображение графика в PictureBox
             plotPictureBox.Image = bitmap;
         }
+    }
+
+    public class GraphExporter
+    {
+        private readonly PictureBox pictureBox;
+
+        public GraphExporter(PictureBox pictureBox)
+        {
+            this.pictureBox = pictureBox;
+        }
+
+        public byte[] ExportToByteArray()
+        {
+            using (MemoryStream stream = new MemoryStream())
+            {
+                pictureBox.Image.Save(stream, ImageFormat.Png);
+                return stream.ToArray();
+            }
+        }
+    }
+
+    public class DatabaseManager
+    {
+        private string connectionString;
+
+        public DatabaseManager(string connectionString)
+        {
+            this.connectionString = connectionString;
+        }
+
+        public void SaveImageToDatabase(byte[] imageBytes)
+        {
+            using (MySqlConnection connection = new MySqlConnection(connectionString))
+            {
+                MySqlCommand command = new MySqlCommand("INSERT INTO Images (image) VALUES (@image)", connection);
+                command.Parameters.AddWithValue("@image", imageBytes);
+
+                connection.Open();
+                command.ExecuteNonQuery();
+            }
+        }
+
     }
 }
